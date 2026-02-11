@@ -128,19 +128,22 @@ export function ColorControl(props: ColorControlProps) {
           </box>
         }
       >
+        <scrollbox flexGrow={1} scrollY={true}>
         {/* Color preview */}
         <box flexDirection="row" gap={2} marginBottom={1}>
           <box flexDirection="column">
-            <text content="Preview" attributes={TextAttributes.DIM} />
+            <text height={1} content="Preview" attributes={TextAttributes.DIM} />
             <text
+              height={1}
               content="████████"
               fg={hsbkToHex(currentColor())}
               attributes={TextAttributes.BOLD}
             />
           </box>
           <box flexDirection="column">
-            <text content={`${selectedCount()} device${selectedCount() > 1 ? 's' : ''} selected`} attributes={TextAttributes.DIM} />
+            <text height={1} content={`${selectedCount()} device${selectedCount() > 1 ? 's' : ''} selected`} attributes={TextAttributes.DIM} />
             <text
+              height={1}
               content={currentPower() ? 'POWER ON' : 'POWER OFF'}
               fg={currentPower() ? '#00ff00' : '#ff4444'}
               attributes={TextAttributes.BOLD}
@@ -256,6 +259,7 @@ export function ColorControl(props: ColorControlProps) {
         {/* Hints */}
         <box flexGrow={1} />
         <text content="[←/→] adjust  [↑/↓] slider  [Shift] fine" attributes={TextAttributes.DIM} />
+        </scrollbox>
       </Show>
     </box>
   );
