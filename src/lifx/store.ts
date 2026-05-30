@@ -95,25 +95,30 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
           setStore('devices', sn, 'label', labelResult.value);
         }
 
-        if (groupResult.status === 'fulfilled' && groupResult.value) {
-          const groupVal = groupResult.value;
-          const groupId = groupVal.group;
-          const groupLabel = groupVal.label;
+        // Assign the device to a group. If the group query failed or returned
+        // an empty id, fall back to a synthetic "ungrouped" group so the device
+        // still shows up in the device list instead of disappearing entirely.
+        let groupId = 'ungrouped';
+        let groupLabel = 'Ungrouped';
+        if (groupResult.status === 'fulfilled' && groupResult.value && groupResult.value.group) {
+          groupId = groupResult.value.group;
+          groupLabel = groupResult.value.label;
+        }
 
-          setStore('devices', sn, 'group', groupLabel);
-          setStore('devices', sn, 'groupId', groupId);
+        setStore('devices', sn, 'group', groupLabel);
+        setStore('devices', sn, 'groupId', groupId);
 
-          // Update group
-          if (!store.groups[groupId]) {
-            setStore('groups', groupId, {
-              id: groupId,
-              label: groupLabel,
-              devices: [sn],
-              expanded: true,
-            });
-          } else if (!store.groups[groupId].devices.includes(sn)) {
-            setStore('groups', groupId, 'devices', (devices) => [...devices, sn]);
-          }
+        // Update group
+        const existingGroup = store.groups[groupId];
+        if (!existingGroup) {
+          setStore('groups', groupId, {
+            id: groupId,
+            label: groupLabel,
+            devices: [sn],
+            expanded: true,
+          });
+        } else if (!existingGroup.devices.includes(sn)) {
+          setStore('groups', groupId, 'devices', (devices) => [...devices, sn]);
         }
 
         setStore('devices', sn, 'online', true);
@@ -266,6 +271,36 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     await setPower(!anyOn);
   }
 
+  // Per-device control (used by scenes, which target specific devices
+  // regardless of the current selection).
+  function setDeviceColor(sn: string, hsbk: HSBK, duration: number = 250) {
+    const deviceState = store.devices[sn];
+    if (!deviceState?.online) return;
+    try {
+      client.unicast(
+        SetColorCommand(hsbk.hue, hsbk.saturation, hsbk.brightness, hsbk.kelvin, duration),
+        deviceState.device
+      );
+      setStore('devices', sn, 'color', { ...hsbk });
+    } catch (err) {
+      // Ignore errors for now
+    }
+  }
+
+  function setDevicePower(sn: string, on: boolean, duration: number = 0) {
+    const deviceState = store.devices[sn];
+    if (!deviceState?.online) return;
+    try {
+      client.unicast(
+        SetLightPowerCommand(on, duration),
+        deviceState.device
+      );
+      setStore('devices', sn, 'power', on);
+    } catch (err) {
+      // Ignore errors for now
+    }
+  }
+
   // Refresh all device states
   async function refreshAll() {
     setStore('isScanning', true);
@@ -316,6 +351,8 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     setColor,
     setPower,
     togglePower,
+    setDeviceColor,
+    setDevicePower,
     refreshAll,
     getGroupDevices,
     getSortedGroups,

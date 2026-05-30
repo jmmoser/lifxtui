@@ -1,11 +1,9 @@
 // Effects panel for animations and DJ mode
-import { createSignal, createMemo, For, Show } from 'solid-js';
+import { createMemo, For, Show } from 'solid-js';
 import { TextAttributes } from '@opentui/core';
-import { Slider } from './Slider';
 import type { LifxStoreType } from '../lifx/store';
 import type { DJEngine, DJPattern, EffectType } from '../lifx/effects';
-import { hsbkToHex, COLOR_PRESETS } from '../utils/colors';
-import type { HSBK } from '../utils/colors';
+import { hsbkToHex } from '../utils/colors';
 
 interface EffectsPanelProps {
   store: LifxStoreType;
@@ -14,10 +12,13 @@ interface EffectsPanelProps {
   focusedItem: number;
   onItemChange: (item: number) => void;
   onActivate?: () => void;
+  activeEffect?: string | null;
+  onStartEffect?: (effect: EffectType) => void;
+  onStopEffects?: () => void;
 }
 
-// Items: 0-4 = effects, 5 = DJ toggle, 6 = BPM, 7-12 = DJ patterns
-const EFFECT_TYPES: { name: string; type: EffectType }[] = [
+// Items: 0-4 = effects, 5 = Stop
+export const EFFECT_TYPES: { name: string; type: EffectType }[] = [
   { name: 'Pulse', type: 'pulse' },
   { name: 'Breathe', type: 'breathe' },
   { name: 'Strobe', type: 'strobe' },
@@ -36,10 +37,8 @@ const DJ_PATTERNS: { name: string; pattern: DJPattern }[] = [
 ];
 
 export function EffectsPanel(props: EffectsPanelProps) {
-  const [activeEffect, setActiveEffect] = createSignal<EffectType | null>(null);
-  const [djActive, setDjActive] = createSignal(false);
-
   const djConfig = () => props.djEngine.config();
+  const djActive = () => props.djEngine.isRunning();
 
   const selectedCount = createMemo(() => props.store.store.selectedDevices.length);
 
@@ -66,14 +65,21 @@ export function EffectsPanel(props: EffectsPanelProps) {
             {(effect, index) => (
               <text
                 content={`[${effect.name}]`}
-                fg={activeEffect() === effect.type ? '#00ff00' : '#888888'}
+                fg={props.activeEffect === effect.type ? '#00ff00' : '#888888'}
                 attributes={
                   props.focused && props.focusedItem === index()
                     ? TextAttributes.INVERSE
-                    : activeEffect() === effect.type
+                    : props.activeEffect === effect.type
                     ? TextAttributes.BOLD
                     : TextAttributes.NONE
                 }
+                onMouseDown={(e: any) => {
+                  if (e.button === 0) {
+                    props.onActivate?.();
+                    props.onItemChange(index());
+                    props.onStartEffect?.(effect.type);
+                  }
+                }}
               />
             )}
           </For>
@@ -81,6 +87,13 @@ export function EffectsPanel(props: EffectsPanelProps) {
             content="[Stop]"
             fg="#ff4444"
             attributes={props.focused && props.focusedItem === 5 ? TextAttributes.INVERSE : TextAttributes.NONE}
+            onMouseDown={(e: any) => {
+              if (e.button === 0) {
+                props.onActivate?.();
+                props.onItemChange(5);
+                props.onStopEffects?.();
+              }
+            }}
           />
         </box>
 

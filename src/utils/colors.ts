@@ -161,7 +161,7 @@ export const KELVIN_PRESETS = [
 export function generateHueGradient(steps: number): string[] {
   const colors: string[] = [];
   for (let i = 0; i < steps; i++) {
-    const hue = Math.round((i / steps) * 65535);
+    const hue = Math.round((i / (steps - 1)) * 65535);
     colors.push(hsbkToHex({ hue, saturation: 65535, brightness: 65535, kelvin: 3500 }));
   }
   return colors;

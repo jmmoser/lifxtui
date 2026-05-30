@@ -1,14 +1,14 @@
 // Main App component
-import { createSignal, createEffect, createMemo, Show, onCleanup } from 'solid-js';
+import { createSignal, createMemo, Show, onCleanup } from 'solid-js';
 import { useKeyboard } from '@opentui/solid';
 import { TextAttributes } from '@opentui/core';
 import { DeviceList, getFlatList } from './DeviceList';
 import { ColorControl, COLOR_PRESET_LIST } from './ColorControl';
-import { EffectsPanel } from './EffectsPanel';
-import { ScenesPanel, DEFAULT_SCENES, type Scene } from './ScenesPanel';
+import { EffectsPanel, EFFECT_TYPES } from './EffectsPanel';
+import { ScenesPanel, DEFAULT_SCENES, applyScene, createSceneFromCurrentState, type Scene } from './ScenesPanel';
 import { StatusBar } from './StatusBar';
 import { HelpOverlay } from './HelpOverlay';
-import { DJMode, COLOR_PALETTES } from './DJMode';
+import { DJMode, COLOR_PALETTES, SUBDIVISIONS } from './DJMode';
 import type { LifxStoreType } from '../lifx/store';
 import type { DJEngine } from '../lifx/effects';
 import { createRainbowEffect, createCandleEffect, createWaveformEffect } from '../lifx/effects';
@@ -28,6 +28,10 @@ export function App(props: AppProps) {
   const [activePanel, setActivePanel] = createSignal<Panel>('devices');
   const [showHelp, setShowHelp] = createSignal(false);
   const [showDJMode, setShowDJMode] = createSignal(false);
+
+  // DJ-mode selection state (shared between the keyboard handler and the view)
+  const [djPaletteIndex, setDjPaletteIndex] = createSignal(0);
+  const [djSubdivIndex, setDjSubdivIndex] = createSignal(2); // 1x
 
   // Panel-specific focus indices
   const [deviceFocusIndex, setDeviceFocusIndex] = createSignal(0);
@@ -56,7 +60,7 @@ export function App(props: AppProps) {
   const flatList = createMemo(() => getFlatList(props.store));
 
   // Panel navigation order
-  const panels: Panel[] = ['devices', 'control', 'scenes'];
+  const panels: Panel[] = ['devices', 'control', 'effects', 'scenes'];
 
   const cyclePanel = (direction: 1 | -1) => {
     const currentIndex = panels.indexOf(activePanel());
@@ -73,6 +77,27 @@ export function App(props: AppProps) {
     candleEffect.stop();
     props.djEngine.stop();
     setActiveEffect(null);
+  };
+
+  // Apply a saved scene by its index in the scenes list.
+  const applySceneAtIndex = (index: number) => {
+    const scene = scenes()[index];
+    if (!scene) return;
+    setScenesFocusIndex(index);
+    applyScene(props.store, scene);
+  };
+
+  // Capture the current state of the selected devices into the scene slot.
+  const saveCurrentScene = (index: number) => {
+    const existing = scenes()[index];
+    if (!existing) return;
+    if (props.store.store.selectedDevices.length === 0) return;
+    const captured = createSceneFromCurrentState(props.store, existing.name, existing.icon);
+    setScenes((prev) =>
+      prev.map((s, i) =>
+        i === index ? { ...existing, devices: captured.devices } : s
+      )
+    );
   };
 
   // Start an effect
@@ -185,6 +210,28 @@ export function App(props: AppProps) {
       }
     }
 
+    // Navigation keys for effects panel (6 items: 0-4 effects, 5 = Stop)
+    if (activePanel() === 'effects') {
+      if (k === 'left' || k === 'h' || k === 'up' || k === 'k') {
+        setEffectsFocusIndex(Math.max(0, effectsFocusIndex() - 1));
+        return;
+      }
+      if (k === 'right' || k === 'l' || k === 'down' || k === 'j') {
+        setEffectsFocusIndex(Math.min(EFFECT_TYPES.length, effectsFocusIndex() + 1));
+        return;
+      }
+      if (k === 'return' || k === 'space') {
+        const idx = effectsFocusIndex();
+        if (idx >= EFFECT_TYPES.length) {
+          stopAllEffects();
+        } else {
+          const effect = EFFECT_TYPES[idx];
+          if (effect) startEffect(effect.type);
+        }
+        return;
+      }
+    }
+
     // Navigation keys for scenes panel
     if (activePanel() === 'scenes') {
       if (k === 'up' || k === 'k') {
@@ -194,6 +241,10 @@ export function App(props: AppProps) {
       if (k === 'down' || k === 'j') {
         const sceneList = scenes();
         setScenesFocusIndex(Math.min(sceneList.length - 1, scenesFocusIndex() + 1));
+        return;
+      }
+      if (k === 'return' || k === 'space') {
+        applySceneAtIndex(scenesFocusIndex());
         return;
       }
     }
@@ -238,8 +289,29 @@ export function App(props: AppProps) {
         stopAllEffects();
         return;
 
+      case 'g': {
+        // Select the group of the currently focused device-list item
+        const list = flatList();
+        const item = list[deviceFocusIndex()];
+        if (item) {
+          props.store.selectGroup(item.groupId ?? item.id);
+        }
+        return;
+      }
+
+      case 's':
+        // Save current selection as a new scene (overwrites the focused slot)
+        saveCurrentScene(scenesFocusIndex());
+        return;
+
       case 'r':
         props.store.refreshAll();
+        return;
+
+      // Quick-apply scenes F1-F6
+      case 'f1': case 'f2': case 'f3':
+      case 'f4': case 'f5': case 'f6':
+        applySceneAtIndex(parseInt(k.slice(1)) - 1);
         return;
 
       case 'w':
@@ -283,10 +355,8 @@ export function App(props: AppProps) {
       case 0: // Power - toggle on left/right
         props.store.togglePower();
         break;
-      case 1: // Hue
-        color.hue = Math.max(0, Math.min(65535, color.hue + step));
-        if (color.hue > 65535) color.hue -= 65535;
-        if (color.hue < 0) color.hue += 65535;
+      case 1: // Hue (wraps around the color wheel)
+        color.hue = ((color.hue + step) % 65536 + 65536) % 65536;
         props.store.setColor(color);
         break;
       case 2: // Saturation
@@ -324,10 +394,12 @@ export function App(props: AppProps) {
           const selectedDevices = props.store.store.selectedDevices
             .map((sn) => props.store.store.devices[sn]?.device)
             .filter(Boolean);
-          const firstPalette = COLOR_PALETTES[0];
-          if (selectedDevices.length > 0 && firstPalette) {
+          const palette = COLOR_PALETTES[djPaletteIndex()] ?? COLOR_PALETTES[0];
+          const subdiv = SUBDIVISIONS[djSubdivIndex()]?.value ?? 1;
+          if (selectedDevices.length > 0 && palette) {
             props.djEngine.start(selectedDevices as any, {
-              colors: firstPalette.colors,
+              colors: palette.colors,
+              subdivision: subdiv,
             });
           }
         }
@@ -356,9 +428,28 @@ export function App(props: AppProps) {
         props.djEngine.updateConfig({ intensity: newIntensity });
         break;
 
-      case 'p':
-        // Cycle palettes (simplified)
+      case 's': {
+        // Cycle subdivision (1/4, 1/2, 1x, 2x, 4x)
+        const next = key.shift
+          ? (djSubdivIndex() - 1 + SUBDIVISIONS.length) % SUBDIVISIONS.length
+          : (djSubdivIndex() + 1) % SUBDIVISIONS.length;
+        setDjSubdivIndex(next);
+        props.djEngine.updateConfig({ subdivision: SUBDIVISIONS[next]?.value ?? 1 });
         break;
+      }
+
+      case 'p': {
+        // Cycle palettes
+        const next = key.shift
+          ? (djPaletteIndex() - 1 + COLOR_PALETTES.length) % COLOR_PALETTES.length
+          : (djPaletteIndex() + 1) % COLOR_PALETTES.length;
+        setDjPaletteIndex(next);
+        const palette = COLOR_PALETTES[next];
+        if (palette) {
+          props.djEngine.updateConfig({ colors: palette.colors });
+        }
+        break;
+      }
     }
   };
 
@@ -391,6 +482,8 @@ export function App(props: AppProps) {
             store={props.store}
             djEngine={props.djEngine}
             onExit={() => setShowDJMode(false)}
+            selectedPalette={djPaletteIndex()}
+            selectedSubdiv={djSubdivIndex()}
           />
         }
       >
@@ -421,6 +514,9 @@ export function App(props: AppProps) {
               focusedItem={effectsFocusIndex()}
               onItemChange={setEffectsFocusIndex}
               onActivate={() => setActivePanel('effects')}
+              activeEffect={activeEffect()}
+              onStartEffect={(effect) => startEffect(effect)}
+              onStopEffects={stopAllEffects}
             />
           </box>
 
@@ -428,8 +524,8 @@ export function App(props: AppProps) {
           <ScenesPanel
             store={props.store}
             scenes={scenes()}
-            onApplyScene={() => {}}
-            onSaveScene={() => {}}
+            onApplyScene={(scene) => applyScene(props.store, scene)}
+            onSaveScene={() => saveCurrentScene(scenesFocusIndex())}
             focused={activePanel() === 'scenes'}
             focusedIndex={scenesFocusIndex()}
             onFocusChange={setScenesFocusIndex}

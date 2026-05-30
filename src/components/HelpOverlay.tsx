@@ -29,6 +29,7 @@ const SHORTCUTS = [
     { key: 'e', desc: 'Stop effects' },
     { key: 'd', desc: 'DJ mode' },
     { key: 't', desc: 'Tap tempo (DJ)' },
+    { key: 'p/s (DJ)', desc: 'Palette / subdiv' },
   ]},
   { category: 'Scenes', items: [
     { key: 's', desc: 'Save scene' },

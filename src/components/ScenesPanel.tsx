@@ -111,22 +111,13 @@ export function createSceneFromCurrentState(store: LifxStoreType, name: string, 
   };
 }
 
-export async function applyScene(store: LifxStoreType, scene: Scene) {
-  // Select all devices in the scene
-  store.selectNone();
-
-  for (const sn of Object.keys(scene.devices)) {
-    if (store.store.devices[sn]) {
-      store.toggleSelect(sn);
-    }
-  }
-
-  // Apply states
+export function applyScene(store: LifxStoreType, scene: Scene) {
+  // Apply the stored power/color state to each device in the scene.
   for (const [sn, state] of Object.entries(scene.devices)) {
-    if (store.store.devices[sn]) {
-      // This is a simplified version - in reality we'd batch these
-      const devices = [sn];
-      // Need to implement per-device setColor/setPower in store
+    if (!store.store.devices[sn]) continue;
+    store.setDevicePower(sn, state.power);
+    if (state.power) {
+      store.setDeviceColor(sn, state.color);
     }
   }
 }
