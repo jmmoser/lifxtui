@@ -10,6 +10,8 @@ interface DJModeProps {
   store: LifxStoreType;
   djEngine: DJEngine;
   onExit: () => void;
+  selectedPalette: number;
+  selectedSubdiv: number;
 }
 
 const DJ_PATTERNS: { name: string; pattern: DJPattern; key: string; desc: string }[] = [
@@ -41,9 +43,8 @@ const SUBDIVISIONS = [
 
 export function DJMode(props: DJModeProps) {
   const [beatVisual, setBeatVisual] = createSignal(false);
-  const [tapTimes, setTapTimes] = createSignal<number[]>([]);
-  const [selectedPalette, setSelectedPalette] = createSignal(0);
-  const [selectedSubdiv, setSelectedSubdiv] = createSignal(2); // 1x
+  const selectedPalette = () => props.selectedPalette;
+  const selectedSubdiv = () => props.selectedSubdiv;
 
   // Use the reactive signal directly from djEngine
   const config = () => props.djEngine.config();
@@ -125,6 +126,7 @@ export function DJMode(props: DJModeProps) {
                 )}
               </For>
             </box>
+            <text content="[s/S] subdivision" attributes={TextAttributes.DIM} />
           </box>
 
           {/* Intensity */}

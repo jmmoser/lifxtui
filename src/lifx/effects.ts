@@ -88,6 +88,9 @@ export function createDJEngine(client: ClientInstance) {
   let lastBeatTime = 0;
   let lastTapTime = 0; // Separate tracker for tap tempo
   let devices: Device[] = [];
+  // Reactive flag so consumers (status bar, DJ mode, beat visualizer) re-render
+  // when the engine starts/stops. A plain `let` would not track dependencies.
+  const [running, setRunning] = createSignal(false);
   const [config, setConfig] = createSignal<DJConfig>({
     bpm: 120,
     pattern: 'chase',
@@ -240,6 +243,7 @@ export function createDJEngine(client: ClientInstance) {
     beatCount = 0;
     lastBeatTime = Date.now();
     intervalId = setInterval(onBeat, getBeatInterval());
+    setRunning(true);
   }
 
   function stop() {
@@ -247,13 +251,14 @@ export function createDJEngine(client: ClientInstance) {
       clearInterval(intervalId);
       intervalId = null;
     }
+    setRunning(false);
   }
 
   function updateConfig(newConfig: Partial<DJConfig>) {
     setConfig((prev) => ({ ...prev, ...newConfig }));
     if (intervalId) {
-      // Restart with new timing
-      stop();
+      // Restart with new timing (keep running)
+      clearInterval(intervalId);
       intervalId = setInterval(onBeat, getBeatInterval());
     }
   }
@@ -271,7 +276,7 @@ export function createDJEngine(client: ClientInstance) {
   }
 
   function isRunning() {
-    return intervalId !== null;
+    return running();
   }
 
   // Return the signal directly for reactive access
