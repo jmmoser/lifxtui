@@ -120,7 +120,7 @@ function GroupRow(props: GroupRowProps) {
       height={1}
       onMouseDown={(e: any) => {
         if (e.button === 0) {
-          if (e.shift) {
+          if (e.modifiers?.shift) {
             props.onSelect();
           } else {
             props.onToggle();
@@ -171,7 +171,7 @@ function DeviceRow(props: DeviceRowProps) {
       paddingLeft={2}
       onMouseDown={(e: any) => {
         if (e.button === 0) {
-          if (e.shift) {
+          if (e.modifiers?.shift) {
             props.onToggleSelect();
           } else {
             props.onFocus();

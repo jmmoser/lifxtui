@@ -20,17 +20,20 @@ export function Slider(props: SliderProps) {
   const percentage = () => (props.value - props.min) / (props.max - props.min);
   const filledWidth = () => Math.round(percentage() * width());
 
-  // Handle click on slider bar to set value
-  const handleBarClick = (e: any) => {
+  // Handle click on slider bar to set value. Mouse event coordinates are
+  // absolute terminal cells, and opentui calls the handler with `this` bound
+  // to the renderable the listener is attached to (the row box), so convert
+  // to a bar-relative offset using the row's absolute x.
+  function handleBarClick(this: { x: number }, e: any) {
     if (e.button !== 0) return;
-    // Get click position relative to bar start (after label which is 12 + 1 gap = 13)
-    const barX = e.x - 13;
+    // Bar starts after the label (width 12) plus the 1-cell gap
+    const barX = e.x - this.x - 13;
     if (barX >= 0 && barX < width()) {
       const clickPercentage = barX / width();
       const newValue = Math.round(props.min + clickPercentage * (props.max - props.min));
       props.onChange(Math.max(props.min, Math.min(props.max, newValue)));
     }
-  };
+  }
 
   // Generate gradient bar or solid bar
   const renderBar = () => {

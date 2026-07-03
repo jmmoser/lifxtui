@@ -2,7 +2,7 @@
 import { batch } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Device, DevicesInstance, ClientInstance } from 'lifxlan/index.js';
-import { GetColorCommand, GetPowerCommand, GetLabelCommand, GetGroupCommand, GetVersionCommand, SetColorCommand, SetLightPowerCommand } from 'lifxlan/index.js';
+import { GetColorCommand, GetLabelCommand, GetGroupCommand, GetVersionCommand, SetColorCommand, SetLightPowerCommand } from 'lifxlan/index.js';
 import type { HSBK } from '../utils/colors';
 
 // Device types based on LIFX product capabilities
@@ -58,12 +58,20 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     pendingQueries.add(sn);
 
     try {
-      const [colorResult, labelResult, groupResult, versionResult] = await Promise.allSettled([
+      const results = await Promise.allSettled([
         client.send(GetColorCommand(), device),
         client.send(GetLabelCommand(), device),
         client.send(GetGroupCommand(), device),
         client.send(GetVersionCommand(), device),
       ]);
+      const [colorResult, labelResult, groupResult, versionResult] = results;
+
+      // allSettled never rejects, so unreachable queries surface here as four
+      // rejections rather than in the catch block. Treat that as offline.
+      if (results.every((r) => r.status === 'rejected')) {
+        setStore('devices', sn, 'online', false);
+        return;
+      }
 
       batch(() => {
         // Determine device type from version info
@@ -107,6 +115,20 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
 
         setStore('devices', sn, 'group', groupLabel);
         setStore('devices', sn, 'groupId', groupId);
+
+        // Remove the device from any group it previously belonged to so a
+        // group change doesn't leave it listed in both groups. Drop groups
+        // that become empty.
+        for (const [otherId, otherGroup] of Object.entries(store.groups)) {
+          if (otherId !== groupId && otherGroup.devices.includes(sn)) {
+            if (otherGroup.devices.length === 1) {
+              // Setting a store key to undefined deletes it
+              setStore('groups', otherId, undefined as any);
+            } else {
+              setStore('groups', otherId, 'devices', (devices) => devices.filter((d) => d !== sn));
+            }
+          }
+        }
 
         // Update group
         const existingGroup = store.groups[groupId];
@@ -215,6 +237,10 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
   // Toggle group expansion
   function toggleGroup(groupId: string) {
     setStore('groups', groupId, 'expanded', (e) => !e);
+  }
+
+  function setScanning(scanning: boolean) {
+    setStore('isScanning', scanning);
   }
 
   // Control functions
@@ -348,6 +374,7 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     selectNone,
     selectGroup,
     toggleGroup,
+    setScanning,
     setColor,
     setPower,
     togglePower,

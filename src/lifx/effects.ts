@@ -30,6 +30,13 @@ function safeColor(color: HSBK | undefined, fallback: HSBK): HSBK {
   return color ?? fallback;
 }
 
+// The LIFX protocol encodes waveform skew ratio as an int16 where -32768 is
+// 0%, 0 is 50%, and 32767 is 100%. SetWaveformCommand passes the value
+// through unconverted, so map a 0-1 fraction onto that range here.
+function toProtocolSkewRatio(ratio: number): number {
+  return Math.max(-32768, Math.min(32767, Math.round(ratio * 65535 - 32768)));
+}
+
 export type DJPattern = 'chase' | 'strobe' | 'alternate' | 'wave' | 'random' | 'pulse' | 'blackout';
 
 // Built-in waveform effects using LIFX protocol
@@ -73,7 +80,7 @@ export function createWaveformEffect(
         baseColor.kelvin,
         speed,
         10, // cycles (let it run)
-        skewRatio,
+        toProtocolSkewRatio(skewRatio),
         waveform
       ),
       device
@@ -211,7 +218,7 @@ export function createDJEngine(client: ClientInstance) {
               color.kelvin,
               getBeatInterval(),
               1,
-              0.5,
+              toProtocolSkewRatio(0.5),
               Waveform.SINE
             ),
             device
@@ -343,10 +350,10 @@ export function createRainbowEffect(client: ClientInstance) {
     hueOffset = 0;
 
     intervalId = setInterval(() => {
-      hueOffset = (hueOffset + 500) % 65535;
+      hueOffset = (hueOffset + 500) % 65536;
 
       devices.forEach((device, i) => {
-        const deviceHue = (hueOffset + (i * 65535 / devices.length)) % 65535;
+        const deviceHue = Math.round(hueOffset + (i * 65536 / devices.length)) % 65536;
         client.unicast(
           SetColorCommand(deviceHue, 65535, 65535, 3500, speed),
           device
