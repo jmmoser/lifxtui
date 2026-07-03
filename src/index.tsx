@@ -32,6 +32,11 @@ for (const device of devices) {
   store.registerDevice(device);
 }
 
+// Show "Ready" once the initial discovery window has passed. Discovery
+// broadcasts keep running in the background; this only ends the blinking
+// "Scanning..." indicator, which otherwise never resolves.
+setTimeout(() => store.setScanning(false), 3000);
+
 // Cleanup on exit
 process.on('SIGINT', () => {
   djEngine.stop();

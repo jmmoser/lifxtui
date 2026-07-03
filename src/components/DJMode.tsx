@@ -52,7 +52,8 @@ export function DJMode(props: DJModeProps) {
   // Beat visualizer
   createEffect(() => {
     if (props.djEngine.isRunning()) {
-      const interval = 60000 / config().bpm;
+      // Match the engine's beat interval, including subdivision
+      const interval = (60000 / config().bpm) / config().subdivision;
       const beatInterval = setInterval(() => {
         setBeatVisual(true);
         setTimeout(() => setBeatVisual(false), 50);
