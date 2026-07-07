@@ -21,6 +21,7 @@ interface AppProps {
   store: LifxStoreType;
   djEngine: DJEngine;
   client: ClientInstance;
+  onQuit: () => void;
 }
 
 export function App(props: AppProps) {
@@ -49,11 +50,18 @@ export function App(props: AppProps) {
   const candleEffect = createCandleEffect(props.client);
   const [activeEffect, setActiveEffect] = createSignal<string | null>(null);
 
+  // Firmware waveform effects (pulse/breathe/strobe) run on-device for a
+  // fixed duration. Track the devices they were sent to and when they end so
+  // the "active" indicator clears itself and Stop can cancel them.
+  let waveformTimeout: ReturnType<typeof setTimeout> | null = null;
+  let waveformTargets: string[] = [];
+
   // Cleanup on unmount
   onCleanup(() => {
     rainbowEffect.stop();
     candleEffect.stop();
     props.djEngine.stop();
+    if (waveformTimeout) clearTimeout(waveformTimeout);
   });
 
   // Get flat list for device navigation
@@ -76,6 +84,19 @@ export function App(props: AppProps) {
     rainbowEffect.stop();
     candleEffect.stop();
     props.djEngine.stop();
+    if (waveformTimeout) {
+      clearTimeout(waveformTimeout);
+      waveformTimeout = null;
+    }
+    // A running firmware waveform can't be cancelled directly; overriding it
+    // with the device's current color stops it immediately.
+    for (const sn of waveformTargets) {
+      const device = props.store.store.devices[sn];
+      if (device) {
+        props.store.setDeviceColor(sn, { ...device.color }, 0);
+      }
+    }
+    waveformTargets = [];
     setActiveEffect(null);
   };
 
@@ -121,15 +142,24 @@ export function App(props: AppProps) {
         break;
       case 'pulse':
       case 'breathe':
-      case 'strobe':
-        createWaveformEffect(props.client, selectedDevices as any, {
+      case 'strobe': {
+        const duration = createWaveformEffect(props.client, selectedDevices as any, {
           type: effect as any,
           speed: effect === 'strobe' ? 100 : 1000,
           intensity: 1,
           colors: [COLOR_PRESETS.blue!],
         });
         setActiveEffect(effect);
+        // The waveform stops on-device when its cycles run out; clear the
+        // indicator to match.
+        waveformTargets = [...props.store.store.selectedDevices];
+        waveformTimeout = setTimeout(() => {
+          waveformTimeout = null;
+          waveformTargets = [];
+          setActiveEffect(null);
+        }, duration);
         break;
+      }
     }
   };
 
@@ -257,7 +287,9 @@ export function App(props: AppProps) {
 
       case 'q':
         if (!key.ctrl) {
-          process.exit(0);
+          // Shut down cleanly (stop effects, close the socket) instead of
+          // exiting with the UDP socket still open.
+          props.onQuit();
         }
         return;
 
@@ -525,7 +557,6 @@ export function App(props: AppProps) {
             store={props.store}
             scenes={scenes()}
             onApplyScene={(scene) => applyScene(props.store, scene)}
-            onSaveScene={() => saveCurrentScene(scenesFocusIndex())}
             focused={activePanel() === 'scenes'}
             focusedIndex={scenesFocusIndex()}
             onFocusChange={setScenesFocusIndex}

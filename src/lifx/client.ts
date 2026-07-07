@@ -24,8 +24,15 @@ export async function LifxClient(devices: DevicesInstance) {
   const client = Client({ router });
 
   function onMessage(message: Uint8Array, remote: { port: number; address: string; }) {
-    const { header, serialNumber } = router.receive(message);
-    devices.register(serialNumber, remote.port, remote.address, header.target);
+    // A malformed or non-LIFX datagram makes decodeHeader throw, which would
+    // be an uncaught exception inside the socket event handler and kill the
+    // process. Drop such packets instead.
+    try {
+      const { header, serialNumber } = router.receive(message);
+      devices.register(serialNumber, remote.port, remote.address, header.target);
+    } catch {
+      // Not a valid LIFX message — ignore it
+    }
   }
 
   socket.on('message', onMessage);

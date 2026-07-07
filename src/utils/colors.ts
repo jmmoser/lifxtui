@@ -181,14 +181,13 @@ export function generateKelvinGradient(steps: number): string[] {
 
 // Interpolate between two HSBK colors
 export function lerpHsbk(a: HSBK, b: HSBK, t: number): HSBK {
-  // Handle hue wrapping
+  // Handle hue wrapping — hue is a uint16, so the circle is 65536 wide
   let hueDiff = b.hue - a.hue;
-  if (hueDiff > 32767) hueDiff -= 65535;
-  if (hueDiff < -32767) hueDiff += 65535;
+  if (hueDiff > 32768) hueDiff -= 65536;
+  if (hueDiff < -32768) hueDiff += 65536;
 
-  let hue = a.hue + hueDiff * t;
-  if (hue < 0) hue += 65535;
-  if (hue > 65535) hue -= 65535;
+  let hue = (a.hue + hueDiff * t) % 65536;
+  if (hue < 0) hue += 65536;
 
   return {
     hue: Math.round(hue),

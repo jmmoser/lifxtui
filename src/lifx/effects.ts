@@ -3,7 +3,6 @@ import type { ClientInstance, Device } from 'lifxlan/index.js';
 import { SetWaveformCommand, SetColorCommand, Waveform } from 'lifxlan/index.js';
 import { createSignal } from 'solid-js';
 import type { HSBK } from '../utils/colors';
-import { COLOR_PRESETS } from '../utils/colors';
 
 const DEFAULT_BLUE: HSBK = { hue: 43690, saturation: 65535, brightness: 65535, kelvin: 3500 };
 const DEFAULT_PURPLE: HSBK = { hue: 49151, saturation: 65535, brightness: 65535, kelvin: 3500 };
@@ -39,12 +38,18 @@ function toProtocolSkewRatio(ratio: number): number {
 
 export type DJPattern = 'chase' | 'strobe' | 'alternate' | 'wave' | 'random' | 'pulse' | 'blackout';
 
-// Built-in waveform effects using LIFX protocol
+// Firmware waveforms run a fixed number of cycles on the device, then stop
+// on their own.
+const WAVEFORM_CYCLES = 10;
+
+// Built-in waveform effects using LIFX protocol. Returns the total duration
+// of the effect in ms so the caller can clear its "active" indicator when
+// the waveform finishes on-device.
 export function createWaveformEffect(
   client: ClientInstance,
   devices: Device[],
   config: EffectConfig
-) {
+): number {
   const { type, speed, intensity } = config;
   const baseColor = safeColor(config.colors?.[0], DEFAULT_BLUE);
 
@@ -79,13 +84,15 @@ export function createWaveformEffect(
         Math.round(baseColor.brightness * intensity),
         baseColor.kelvin,
         speed,
-        10, // cycles (let it run)
+        WAVEFORM_CYCLES,
         toProtocolSkewRatio(skewRatio),
         waveform
       ),
       device
     );
   });
+
+  return speed * WAVEFORM_CYCLES;
 }
 
 // Software-based DJ pattern engine

@@ -33,12 +33,14 @@ const COLOR_PALETTES: { name: string; colors: HSBK[] }[] = [
   { name: 'Mono', colors: [COLOR_PRESETS.white!, { ...COLOR_PRESETS.white!, brightness: 10000 }] },
 ];
 
+// `value` is ticks per beat: the engine fires every (60000 / bpm) / value ms,
+// so 2x is double-time and 1/4 fires once every four beats.
 const SUBDIVISIONS = [
-  { label: '1/4', value: 4 },
-  { label: '1/2', value: 2 },
+  { label: '1/4', value: 0.25 },
+  { label: '1/2', value: 0.5 },
   { label: '1x', value: 1 },
-  { label: '2x', value: 0.5 },
-  { label: '4x', value: 0.25 },
+  { label: '2x', value: 2 },
+  { label: '4x', value: 4 },
 ];
 
 export function DJMode(props: DJModeProps) {
