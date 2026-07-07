@@ -1,8 +1,7 @@
 // Scenes management panel
-import { createSignal, createMemo, For, Show } from 'solid-js';
+import { For } from 'solid-js';
 import { TextAttributes } from '@opentui/core';
 import type { LifxStoreType } from '../lifx/store';
-import { hsbkToHex } from '../utils/colors';
 import type { HSBK } from '../utils/colors';
 
 export interface Scene {
@@ -16,7 +15,6 @@ interface ScenesPanelProps {
   store: LifxStoreType;
   scenes: Scene[];
   onApplyScene: (scene: Scene) => void;
-  onSaveScene: (name: string) => void;
   focused: boolean;
   focusedIndex: number;
   onFocusChange?: (index: number) => void;
@@ -47,38 +45,39 @@ export function ScenesPanel(props: ScenesPanelProps) {
       onMouseDown={() => props.onActivate?.()}
     >
       <For each={props.scenes}>
-        {(scene, index) => (
-          <box
-            flexDirection="row"
-            height={1}
-            onMouseDown={(e: any) => {
-              if (e.button === 0) {
-                props.onFocusChange?.(index());
-                props.onApplyScene(scene);
-              }
-            }}
-          >
-            <text
-              content={`${scene.icon} ${scene.name}`}
-              attributes={
-                props.focused && props.focusedIndex === index()
-                  ? TextAttributes.INVERSE
-                  : TextAttributes.NONE
-              }
-              fg={props.focused && props.focusedIndex === index() ? '#000000' : '#ffffff'}
-              bg={props.focused && props.focusedIndex === index() ? '#ffaa00' : undefined}
-            />
-          </box>
-        )}
+        {(scene, index) => {
+          // Scenes start with no captured devices; applying one is a no-op
+          // until the user saves into it, so say so instead of failing
+          // silently.
+          const isEmpty = () => Object.keys(scene.devices).length === 0;
+          const isFocused = () => props.focused && props.focusedIndex === index();
+          return (
+            <box
+              flexDirection="row"
+              height={1}
+              onMouseDown={(e: any) => {
+                if (e.button === 0) {
+                  props.onFocusChange?.(index());
+                  props.onApplyScene(scene);
+                }
+              }}
+            >
+              <text
+                content={`${scene.icon} ${scene.name}${isEmpty() ? ' (empty)' : ''}`}
+                attributes={
+                  isFocused()
+                    ? TextAttributes.INVERSE
+                    : isEmpty()
+                    ? TextAttributes.DIM
+                    : TextAttributes.NONE
+                }
+                fg={isFocused() ? '#000000' : '#ffffff'}
+                bg={isFocused() ? '#ffaa00' : undefined}
+              />
+            </box>
+          );
+        }}
       </For>
-
-      {/* Add scene option */}
-      <box marginTop={1}>
-        <text
-          content="+ New Scene..."
-          attributes={TextAttributes.DIM}
-        />
-      </box>
 
       <box flexGrow={1} />
 

@@ -37,18 +37,15 @@ for (const device of devices) {
 // "Scanning..." indicator, which otherwise never resolves.
 setTimeout(() => store.setScanning(false), 3000);
 
-// Cleanup on exit
-process.on('SIGINT', () => {
+// Cleanup on exit — shared by signal handlers and the in-app quit key
+function shutdown() {
   djEngine.stop();
   lifxClient.close();
   process.exit(0);
-});
+}
 
-process.on('SIGTERM', () => {
-  djEngine.stop();
-  lifxClient.close();
-  process.exit(0);
-});
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // Render the app
 render(() => (
@@ -56,5 +53,6 @@ render(() => (
     store={store}
     djEngine={djEngine}
     client={lifxClient.client}
+    onQuit={shutdown}
   />
 ), { useMouse: true });

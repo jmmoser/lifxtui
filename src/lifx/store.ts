@@ -48,15 +48,25 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     isScanning: true,
   });
 
-  // Track pending device queries to avoid duplicates
-  const pendingQueries = new Set<string>();
+  // Track pending device queries so concurrent callers share the in-flight
+  // query instead of silently skipping it (refreshAll relies on awaiting it).
+  const pendingQueries = new Map<string, Promise<void>>();
+
+  function queryDeviceState(device: Device): Promise<void> {
+    const sn = device.serialNumber;
+    const pending = pendingQueries.get(sn);
+    if (pending) return pending;
+
+    const query = doQueryDeviceState(device).finally(() => {
+      pendingQueries.delete(sn);
+    });
+    pendingQueries.set(sn, query);
+    return query;
+  }
 
   // Query device state
-  async function queryDeviceState(device: Device) {
+  async function doQueryDeviceState(device: Device) {
     const sn = device.serialNumber;
-    if (pendingQueries.has(sn)) return;
-    pendingQueries.add(sn);
-
     try {
       const results = await Promise.allSettled([
         client.send(GetColorCommand(), device),
@@ -111,6 +121,11 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
         if (groupResult.status === 'fulfilled' && groupResult.value && groupResult.value.group) {
           groupId = groupResult.value.group;
           groupLabel = groupResult.value.label;
+        } else if (store.devices[sn]?.groupId) {
+          // Transient query failure (e.g. one dropped UDP packet): keep the
+          // device in its current group instead of bouncing it to Ungrouped.
+          groupId = store.devices[sn]!.groupId;
+          groupLabel = store.devices[sn]!.group;
         }
 
         setStore('devices', sn, 'group', groupLabel);
@@ -139,8 +154,14 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
             devices: [sn],
             expanded: true,
           });
-        } else if (!existingGroup.devices.includes(sn)) {
-          setStore('groups', groupId, 'devices', (devices) => [...devices, sn]);
+        } else {
+          // Pick up renames done in the LIFX app
+          if (existingGroup.label !== groupLabel) {
+            setStore('groups', groupId, 'label', groupLabel);
+          }
+          if (!existingGroup.devices.includes(sn)) {
+            setStore('groups', groupId, 'devices', (devices) => [...devices, sn]);
+          }
         }
 
         setStore('devices', sn, 'online', true);
@@ -149,8 +170,6 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     } catch (err) {
       // Device might be offline
       setStore('devices', sn, 'online', false);
-    } finally {
-      pendingQueries.delete(sn);
     }
   }
 
@@ -198,9 +217,17 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     updateSelectedList();
   }
 
+  // A device the user can meaningfully select: online and controllable as a
+  // light. Switches are hidden from the device list, so selecting them would
+  // inflate the selection count and send them color commands.
+  function isSelectable(sn: string): boolean {
+    const device = store.devices[sn];
+    return !!device && device.online && device.deviceType !== 'switch';
+  }
+
   function selectAll() {
     Object.keys(store.devices).forEach((sn) => {
-      if (store.devices[sn]?.online) {
+      if (isSelectable(sn)) {
         setStore('devices', sn, 'selected', true);
       }
     });
@@ -218,14 +245,25 @@ export function createLifxStore(devicesInstance: DevicesInstance, client: Client
     const group = store.groups[groupId];
     if (!group) return;
 
-    // Check if all in group are selected
-    const allSelected = group.devices.every((sn) => store.devices[sn]?.selected);
+    // Judge "all selected" against the same set we can actually toggle —
+    // offline devices and switches would otherwise keep it false forever,
+    // making the group toggle stick on "select".
+    const selectable = group.devices.filter(isSelectable);
+    if (selectable.length === 0) return;
 
-    group.devices.forEach((sn) => {
-      if (store.devices[sn]?.online) {
-        setStore('devices', sn, 'selected', !allSelected);
-      }
-    });
+    const allSelected = selectable.every((sn) => store.devices[sn]?.selected);
+
+    if (allSelected) {
+      // Deselect the whole group, including any offline devices that were
+      // selected individually before going offline.
+      group.devices.forEach((sn) => {
+        setStore('devices', sn, 'selected', false);
+      });
+    } else {
+      selectable.forEach((sn) => {
+        setStore('devices', sn, 'selected', true);
+      });
+    }
     updateSelectedList();
   }
 
